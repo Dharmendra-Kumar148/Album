@@ -6,16 +6,13 @@ import {
   addDoc,
   getDocs,
   serverTimestamp,
-  deleteDoc,
-  doc,
   updateDoc,
+  doc,
   query,
   where,
 } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext";
 import { EllipsisVertical } from "lucide-react";
-
-const MAX_IMAGE_SIZE_MB = 5;
 
 const Album = () => {
   const { user } = useAuth();
@@ -31,56 +28,54 @@ const Album = () => {
   const fileInputRef = useRef();
   const dropdownRef = useRef();
 
-const uploadImage = async () => {
-  if (!image || !caption.trim()) {
-    alert("Please select an image and enter a caption.");
-    return;
-  }
-
-  try {
-    setUploading(true);
-    const token = await user.getIdToken();
-
-    const formData = new FormData();
-    formData.append("image", image); // must match backend field
-
-    const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/album/upload`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.error || "Upload failed");
+  const uploadImage = async () => {
+    if (!image || !caption.trim()) {
+      alert("Please select an image and enter a caption.");
+      return;
     }
 
-    // ✅ Optionally store caption & category in Firestore (if backend doesn't)
-    await addDoc(collection(db, "albums"), {
-      url: result.url,
-      caption: caption.trim(),
-      category: category.trim(),
-      createdAt: serverTimestamp(),
-      userId: user.uid,
-    });
+    try {
+      setUploading(true);
+      const token = await user.getIdToken();
 
-    alert("✅ Upload successful!");
-    setImage(null);
-    setCaption("");
-    setCategory("");
-    fileInputRef.current.value = "";
-    await fetchImages();
-  } catch (err) {
-    console.error("Upload error:", err);
-    alert("❌ Upload failed: " + err.message);
-  } finally {
-    setUploading(false);
-  }
-};
+      const formData = new FormData();
+      formData.append("image", image);
 
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/album/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Upload failed");
+      }
+
+      await addDoc(collection(db, "albums"), {
+        url: result.url,
+        caption: caption.trim(),
+        category: category.trim(),
+        createdAt: serverTimestamp(),
+        userId: user.uid,
+        publicId: result.publicId, // store it in Firestore to link for deletion
+      });
+
+      alert("✅ Upload successful!");
+      setImage(null);
+      setCaption("");
+      setCategory("");
+      fileInputRef.current.value = "";
+      await fetchImages();
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("❌ Upload failed: " + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const fetchImages = async () => {
     setLoading(true);
@@ -95,14 +90,31 @@ const uploadImage = async () => {
     setLoading(false);
   };
 
-  const deleteImage = async (id) => {
-    await deleteDoc(doc(db, "albums", id));
-    fetchImages();
+  const deleteImage = async (docId) => {
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/album/${docId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to delete image");
+      }
+
+      alert("🗑️ Image deleted successfully");
+      await fetchImages();
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("❌ Failed to delete image: " + err.message);
+    }
   };
 
   const setAsProfilePhoto = async (url) => {
     try {
-      console.log("Setting profile photo:", url);
       await updateDoc(doc(db, "users", user.uid), {
         profilePhotoUrl: url,
         photoURL: url,
@@ -205,7 +217,6 @@ const uploadImage = async () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {filteredImages.map((img) => (
             <div key={img.id} className="bg-white rounded shadow p-2 relative">
-              {/* Mark current profile image */}
               {img.url === user?.photoURL && (
                 <span className="absolute top-2 left-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">
                   ✅ Current
@@ -219,7 +230,7 @@ const uploadImage = async () => {
                 onClick={() => setLightboxUrl(img.url)}
               />
 
-              {/* Three-dot menu */}
+              {/* Menu */}
               <div className="absolute top-2 right-2 z-20" ref={dropdownRef}>
                 <button
                   onClick={() => setActiveMenu(activeMenu === img.id ? null : img.id)}
@@ -251,7 +262,6 @@ const uploadImage = async () => {
                 )}
               </div>
 
-              {/* Caption and Category */}
               <p className="text-sm text-gray-700 mt-2">{img.caption}</p>
               {img.category && (
                 <span className="text-xs bg-gray-200 px-2 py-1 rounded mt-1 inline-block">

@@ -8,6 +8,7 @@ const admin = require("../firebase");
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// ✅ UPLOAD ROUTE
 router.post("/upload", verifyToken, upload.single("image"), (req, res) => {
   const file = req.file;
   if (!file) {
@@ -46,6 +47,35 @@ router.post("/upload", verifyToken, upload.single("image"), (req, res) => {
   );
 
   stream.end(file.buffer);
+});
+
+// ✅ DELETE ROUTE
+router.delete("/:id", verifyToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const docRef = admin.firestore().collection("albums").doc(id);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+
+    const data = docSnap.data();
+
+    // 🗑️ Delete from Cloudinary if publicId exists
+    if (data.publicId) {
+      await cloudinary.uploader.destroy(data.publicId);
+    }
+
+    // 🔥 Delete Firestore document
+    await docRef.delete();
+
+    return res.status(200).json({ message: "Image deleted successfully" });
+  } catch (err) {
+    console.error("Delete error:", err);
+    return res.status(500).json({ error: "Failed to delete image" });
+  }
 });
 
 module.exports = router;

@@ -5,7 +5,6 @@ import {
   doc,
   getDoc,
   setDoc,
-  addDoc,
   collection,
   serverTimestamp,
 } from "firebase/firestore";
@@ -32,12 +31,10 @@ const EditProfile = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Reset scroll in case it's locked by image/file preview
     document.body.style.overflow = "auto";
-
     return () => {
       document.body.style.overflow = "auto";
-      if (previewURL) URL.revokeObjectURL(previewURL); // clean up object URL
+      if (previewURL) URL.revokeObjectURL(previewURL);
     };
   }, [previewURL]);
 
@@ -79,27 +76,24 @@ const EditProfile = () => {
 
     try {
       if (selectedImage) {
+        const token = await user.getIdToken();
         const formData = new FormData();
-        formData.append("file", selectedImage);
-        formData.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET);
+        formData.append("image", selectedImage);
+        formData.append("caption", "Profile Photo");
+        formData.append("category", "Profile");
 
-        const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
-          { method: "POST", body: formData }
-        );
-
-        const data = await res.json();
-        if (!data.secure_url) throw new Error("Cloudinary upload failed");
-
-        photoURL = data.secure_url;
-
-        await addDoc(collection(db, "albums"), {
-          url: photoURL,
-          caption: "Profile Photo",
-          category: "Profile",
-          userId: user.uid,
-          createdAt: serverTimestamp(),
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/album/upload`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
         });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Upload failed");
+
+        photoURL = result.url;
       }
 
       await setDoc(
@@ -114,8 +108,9 @@ const EditProfile = () => {
 
       alert("✅ Profile updated!");
       navigate("/home");
-      window.scrollTo({ top: 0, behavior: "smooth" }); // Optional scroll reset
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
+      console.error("Update error:", error);
       alert("❌ Failed to update profile: " + error.message);
     }
   };

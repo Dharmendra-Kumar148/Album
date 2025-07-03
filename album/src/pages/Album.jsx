@@ -1,9 +1,7 @@
-// ... other imports remain unchanged
 import { useState, useEffect, useRef } from "react";
 import { db } from "../firebase";
 import {
   collection,
-  addDoc,
   getDocs,
   serverTimestamp,
   updateDoc,
@@ -34,18 +32,33 @@ const Album = () => {
       return;
     }
 
+    if (!image.type.startsWith("image/")) {
+      alert("Only image files are allowed.");
+      return;
+    }
+
+    if (!user) {
+      alert("User not authenticated.");
+      return;
+    }
+
+    if (!import.meta.env.VITE_BACKEND_URL) {
+      alert("Backend URL is not configured.");
+      return;
+    }
+
     try {
       setUploading(true);
       const token = await user.getIdToken();
 
       const formData = new FormData();
       formData.append("image", image);
+      formData.append("caption", caption.trim());
+      formData.append("category", category.trim() || "Uncategorized");
 
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/album/upload`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -53,15 +66,6 @@ const Album = () => {
       if (!response.ok) {
         throw new Error(result.error || "Upload failed");
       }
-
-      await addDoc(collection(db, "albums"), {
-        url: result.url,
-        caption: caption.trim(),
-        category: category.trim(),
-        createdAt: serverTimestamp(),
-        userId: user.uid,
-        publicId: result.publicId, // store it in Firestore to link for deletion
-      });
 
       alert("✅ Upload successful!");
       setImage(null);
@@ -78,6 +82,7 @@ const Album = () => {
   };
 
   const fetchImages = async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const q = query(collection(db, "albums"), where("userId", "==", user.uid));
@@ -91,21 +96,19 @@ const Album = () => {
   };
 
   const deleteImage = async (docId) => {
+    if (!user) return;
     try {
       const token = await user.getIdToken();
       const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/album/${docId}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to delete image");
-      }
+      if (!response.ok) throw new Error(result.error || "Failed to delete image");
 
       alert("🗑️ Image deleted successfully");
+      setLightboxUrl(null); // Close lightbox if visible
       await fetchImages();
     } catch (err) {
       console.error("Delete error:", err);
@@ -114,12 +117,14 @@ const Album = () => {
   };
 
   const setAsProfilePhoto = async (url) => {
+    if (!user) return;
     try {
       await updateDoc(doc(db, "users", user.uid), {
         profilePhotoUrl: url,
         photoURL: url,
       });
       alert("✅ Profile photo updated!");
+      await fetchImages(); // Refresh to reflect ✅ tag
     } catch (error) {
       console.error("Failed to update profile photo:", error);
       alert("❌ Failed to update profile photo.");
@@ -127,7 +132,7 @@ const Album = () => {
   };
 
   useEffect(() => {
-    if (user) fetchImages();
+    fetchImages();
   }, [user]);
 
   useEffect(() => {
@@ -149,7 +154,6 @@ const Album = () => {
       {/* Upload Form */}
       <div className="bg-white p-4 rounded shadow max-w-2xl mx-auto mb-8">
         <h2 className="text-xl font-bold mb-4">📤 Upload Photo</h2>
-
         <div
           className="border-2 border-dashed border-gray-300 p-4 rounded mb-4 text-center cursor-pointer"
           onClick={() => fileInputRef.current.click()}
@@ -167,7 +171,6 @@ const Album = () => {
             onChange={(e) => setImage(e.target.files[0])}
           />
         </div>
-
         <input
           type="text"
           placeholder="Caption"
@@ -182,7 +185,6 @@ const Album = () => {
           value={category}
           onChange={(e) => setCategory(e.target.value)}
         />
-
         <button
           onClick={uploadImage}
           disabled={uploading}
@@ -222,7 +224,6 @@ const Album = () => {
                   ✅ Current
                 </span>
               )}
-
               <img
                 src={img.url}
                 alt={img.caption}

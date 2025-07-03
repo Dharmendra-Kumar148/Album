@@ -12,7 +12,7 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "https://album-woad.vercel.app/", // ✅ Replace with your actual Vercel frontend domain
+      "https://album-woad.vercel.app", // ✅ Replace with your actual Vercel frontend domain
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,

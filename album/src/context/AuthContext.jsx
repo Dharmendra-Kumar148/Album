@@ -18,7 +18,7 @@ export const AuthProvider = ({ children }) => {
       if (currentUser) {
         const token = await currentUser.getIdToken(true); // 🔥 Fetch ID token
         setIdToken(token);
-        console.log("✅ Firebase ID Token:", token);
+        // console.log("✅ Firebase ID Token:", token);
       } else {
         setIdToken(null);
       }
